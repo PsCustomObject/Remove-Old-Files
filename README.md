@@ -8,20 +8,12 @@ Script support both PowerShell and PowerShell core and is designed to be run as 
 
 *Remove-OldFiles.ps1* uses an external *comma separated file (csv)* file named **FilePaths.csv** as a centralized configuration file for the maximum flexibility, fields and their usage are described in the table below
 
-| Test | Test 2 | Test 3 |
-| ---- | ------ | ------ |
-| ds   | ds     | ds     |
-| ds   | ds     | ds     |
-| ds   | ds     | ds     |
-
-
-
-| **Column Name**   | **Description**   | **Values**    | Notes |
-| :------------ |:--------------| :------|  |
-| *CleanupPath*      | Path to scan for old files | Local or UNC Path |If empty script will log an exception|
-| *FileExtension* | Files to search for cleanup | Any string like **log**, **pdf**, **txt** |If empty will match all files (\*.\*)|
-| *AgeTolerance* | Tolerance in days | Any number like 30 or 90 |If empty will default to **90 days**|
-| IncludeSubFolders | Defines if recursion should be used | **0** or **1** |If not specified it will default to **0** (no recursion)<br /> Any other value will cause script to log an exception|
+| Column Name         | **Description**                     | **Values**                                | Notes                                                        |
+| ------------------- | ----------------------------------- | ----------------------------------------- | ------------------------------------------------------------ |
+| *CleanupPath*       | Path to scan for old files          | Local or UNC Path                         | If empty script will log an exception                        |
+| *FileExtension*     | Files to search for cleanup         | Any string like **log**, **pdf**, **txt** | If empty will match all files (\*.\*)                        |
+| *AgeTolerance*      | Tolerance in days                   | Any number like 30 or 90                  | If empty will default to **90 days**                         |
+| *IncludeSubFolders* | Defines if recursion should be used | **0** or **1**                            | If not specified it will default to **0** (no recursion)<br /> Any other value will cause script to log an exception |
 
 **Note:** Configuration file name can be changed as long it is updated in **$cleanupPath** variable
 
