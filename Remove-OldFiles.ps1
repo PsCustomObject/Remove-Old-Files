@@ -1,7 +1,7 @@
 <#	
 	.NOTES
 	===========================================================================
-	 Created on:   	28.12.2018
+	 Created on:   	30.12.2018
 	 Revision date: 
 	 Created by:   	Daniele Catanesi
 	 Organization: 	https://PsCustomObject.github.io
@@ -247,7 +247,7 @@ function New-LogEntry
 [string]$logTimeStamp = $currentDate.ToString('hh:mm:ss')
 
 # Define the log path location
-[string]$LogName = $logPath + $dateString + '-RemoveOldFiles.log'
+[string]$logFileName = $logPath + $dateString + '-RemoveOldFiles.log'
 
 # Define Ignore control file
 [string]$ignoreFile = 'ignore'
@@ -300,16 +300,16 @@ function New-LogEntry
     					<ul>"
 #endregion Mail Settings Configuration
 
-New-LogEntry -LogMessage '-----------------------------------------------------------------' -LogName $LogName
-New-LogEntry -LogMessage "	Remove-OldFiles - Execution Started at $logTimeStamp" -LogName $LogName
-New-LogEntry -LogMessage '-----------------------------------------------------------------' -LogName $LogName
+New-LogEntry -LogMessage '-----------------------------------------------------------------' -LogName $logFileName
+New-LogEntry -LogMessage "	Remove-OldFiles - Execution Started at $logTimeStamp" -LogName $logFileName
+New-LogEntry -LogMessage '-----------------------------------------------------------------' -LogName $logFileName
 
 foreach ($path in $cleanupPath)
 {
 	# Check we have something
 	if ([string]::IsNullOrEmpty($path.'CleanupPath') -eq $true)
 	{
-		New-LogEntry -LogMessage 'Cleanup path is empty! - No action will be taken' -IsError -LogName $LogName
+		New-LogEntry -LogMessage 'Cleanup path is empty! - No action will be taken' -IsError -LogName $logFileName
 		
 		# Add exception to mail body
 		$exceptionBody += '<li>
@@ -328,13 +328,13 @@ foreach ($path in $cleanupPath)
 	
 	if (Get-ChildItem -Path $path.'CleanupPath' -File $ignoreFile)
 	{
-		New-LogEntry -LogMessage "Ignore file $ignoreFile found in $($path.'CleanupPath') - Skipping files in directory!" -LogName $LogName
+		New-LogEntry -LogMessage "Ignore file $ignoreFile found in $($path.'CleanupPath') - Skipping files in directory!" -LogName $logFileName
 		
 		# Break loop
 		continue
 	}
 	
-	New-LogEntry -LogMessage "Starting to process files in $($path.'CleanupPath')" -LogName $LogName
+	New-LogEntry -LogMessage "Starting to process files in $($path.'CleanupPath')" -LogName $logFileName
 	
 	#region Csv format check
 	# Check if we have a tolerance defined or use default
@@ -374,7 +374,7 @@ foreach ($path in $cleanupPath)
 	# Check if path is still valid
 	if (!(Test-Path -Path $filePath))
 	{
-		New-LogEntry -LogMessage "Path $filePath is not valid! - Processing aborted" -IsErrorMessage -LogName $LogName
+		New-LogEntry -LogMessage "Path $filePath is not valid! - Processing aborted" -IsErrorMessage -LogName $logFileName
 		
 		# Add exception to mail body
 		$exceptionBody += "<li>
@@ -397,7 +397,7 @@ foreach ($path in $cleanupPath)
 	New-LogEntry -LogMessage "Cleanup Script parameters:
 					Recursive Search: $recursiveSearch (0 means no recursion, 1 recurse in subfolders)
 					File Age Tolerance: $fileAgeTolerance
-					File Type Filter: $fileFilter" -LogName $LogName
+					File Type Filter: $fileFilter" -LogName $logFileName
 	
 	# Check if search is recursive
 	switch ($recursiveSearch)
@@ -416,12 +416,12 @@ foreach ($path in $cleanupPath)
 						# Get file full path
 						[string]$fileName = $file.FullName
 						
-						New-LogEntry -LogMessage "Processing file $fileName" -LogName $LogName
+						New-LogEntry -LogMessage "Processing file $fileName" -LogName $logFileName
 						
 						# Calculate file age - Used for logging purposes
 						[timespan]$fileAge = ((Get-Date) - $file.LastWriteTime)
 						
-						New-LogEntry -LogMessage "File $file was last written $($fileAge.Days) days ago which is greater than $fileAgeTolerance day(s) - Deleting file" -LogName $LogName
+						New-LogEntry -LogMessage "File $file was last written $($fileAge.Days) days ago which is greater than $fileAgeTolerance day(s) - Deleting file" -LogName $logFileName
 						
 						try
 						{
@@ -433,8 +433,8 @@ foreach ($path in $cleanupPath)
 						}
 						catch
 						{
-							New-LogEntry -LogMessage "File $fileName cannot be removed - Please check permissions on file/folder" -LogName $LogName
-							New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $LogName
+							New-LogEntry -LogMessage "File $fileName cannot be removed - Please check permissions on file/folder" -LogName $logFileName
+							New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
 							
 							# Add exception to mail body
 							$exceptionBody += "<li>
@@ -452,8 +452,8 @@ foreach ($path in $cleanupPath)
 			}
 			catch
 			{
-				New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $LogName
-				New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $LogName
+				New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $logFileName
+				New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
 			}
 			
 			break
@@ -473,8 +473,8 @@ foreach ($path in $cleanupPath)
 					{
 						[array]$skippedFolders = $skipControl.'DirectoryName'
 						
-						New-LogEntry -LogMessage "Ignore file found in $skippedFolders folder(s)" -LogName $LogName
-						New-LogEntry -LogMessage 'All child items in folder(s) will be ignored' -LogName $LogName
+						New-LogEntry -LogMessage "Ignore file found in $skippedFolders folder(s)" -LogName $logFileName
+						New-LogEntry -LogMessage 'All child items in folder(s) will be ignored' -LogName $logFileName
 					}
 					
 					# Cycle through the filders 
@@ -488,12 +488,12 @@ foreach ($path in $cleanupPath)
 						#if ($fileParentContainer -notlike $skippedFolders)
 						if ($skippedFolders -notcontains $fileParentContainer)
 						{
-							New-LogEntry -LogMessage "Processing file $fileName" -LogName $LogName
+							New-LogEntry -LogMessage "Processing file $fileName" -LogName $logFileName
 							
 							# Calculate file age - Used for logging purposes
 							[timespan]$fileAge = ((Get-Date) - $file.LastWriteTime)
 							
-							New-LogEntry -LogMessage "File $file was last written $($fileAge.Days) days ago which is greater than $fileAgeTolerance day(s) - Deleting file" -LogName $LogName
+							New-LogEntry -LogMessage "File $file was last written $($fileAge.Days) days ago which is greater than $fileAgeTolerance day(s) - Deleting file" -LogName $logFileName
 							
 							try
 							{
@@ -505,8 +505,8 @@ foreach ($path in $cleanupPath)
 							}
 							catch
 							{
-								New-LogEntry -LogMessage "File $fileName cannot be removed - Please check permissions on file/folder" -LogName $LogName
-								New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $LogName
+								New-LogEntry -LogMessage "File $fileName cannot be removed - Please check permissions on file/folder" -LogName $logFileName
+								New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
 								
 								# Add exception to mail body
 								$exceptionBody += "<li>
@@ -522,15 +522,15 @@ foreach ($path in $cleanupPath)
 						}
 						else
 						{
-							New-LogEntry -LogMessage "File $fileName will be skipped - Ignore file found in containing folder" -LogName $LogName
+							New-LogEntry -LogMessage "File $fileName will be skipped - Ignore file found in containing folder" -LogName $logFileName
 						}
 					}
 				}
 			}
 			catch
 			{
-				New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $LogName
-				New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $LogName
+				New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $logFileName
+				New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
 			}
 			
 			break
@@ -538,8 +538,8 @@ foreach ($path in $cleanupPath)
 
 		default
 		{
-			New-LogEntry -LogMessage "IncludeSubFolders value in CSV $recursiveSearch unknown" -IsErrorMessage -LogName $LogName
-			New-LogEntry -LogMessage 'Entry will not be processed - Review Configuration file' -IsErrorMessage -LogName $LogName
+			New-LogEntry -LogMessage "IncludeSubFolders value in CSV $recursiveSearch unknown" -IsErrorMessage -LogName $logFileName
+			New-LogEntry -LogMessage 'Entry will not be processed - Review Configuration file' -IsErrorMessage -LogName $logFileName
 			
 			# Break loop
 			continue
@@ -549,13 +549,13 @@ foreach ($path in $cleanupPath)
 
 if ($isException)
 {
-	New-LogEntry -LogMessage "$deletedFiles item(s) have been removed from the log directory" -LogName $LogName
-	New-LogEntry -LogMessage "A total of $exceptionCount exceptions have been reported - Sending notification email" -IsWarningMessage -LogName $LogName
+	New-LogEntry -LogMessage "$deletedFiles item(s) have been removed from the log directory" -LogName $logFileName
+	New-LogEntry -LogMessage "A total of $exceptionCount exceptions have been reported - Sending notification email" -IsWarningMessage -LogName $logFileName
 	
 	# Close mail body
 	$exceptionBody += "</ul>
 					<p>
-						Please Review log file under $LogName for more details.
+						Please Review log file $logFileName for more details.
 					</p>
 					<p>
 						Kind regards,<br>
@@ -579,13 +579,13 @@ if ($isException)
 }
 else
 {
-	New-LogEntry -LogMessage "$deletedFiles item(s) have been removed from the log directory - No Exception has been reported" -LogName $LogName
+	New-LogEntry -LogMessage "$deletedFiles item(s) have been removed from the log directory - No Exception has been reported" -LogName $logFileName
 }
 
 # Update timestamp
 [datetime]$currentDate = Get-Date
 [string]$logTimeStamp = $currentDate.ToString('hh:mm:ss')
 
-New-LogEntry -LogMessage '-----------------------------------------------------------------' -LogName $LogName
-New-LogEntry -LogMessage "	Remove-OldFiles - Execution Completed at $logTimeStamp" -LogName $LogName
-New-LogEntry -LogMessage '-----------------------------------------------------------------' -LogName $LogName
+New-LogEntry -LogMessage '-----------------------------------------------------------------' -LogName $logFileName
+New-LogEntry -LogMessage "	Remove-OldFiles - Execution Completed at $logTimeStamp" -LogName $logFileName
+New-LogEntry -LogMessage '-----------------------------------------------------------------' -LogName $logFileName
