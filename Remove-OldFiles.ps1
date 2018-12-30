@@ -19,10 +19,16 @@
 		will log a message and delete the file
 
 		Script configuration is centrally read from a customizable CSV file which 
-		contains: 
-			- Path
-			- Tolerance in Days
+		must contain:
+			- Path to scan
+			- File extension to match
+			- Tolerance in days
+			- If recursion should be used
 
+		Script will handle any empty/wrong value in the CSV file via default values
+
+		Exceptions, for example wrong path or permission denied on delete, are both
+		logged and notified to defined email address(es)
 #>
 
 #region Support Function
@@ -252,8 +258,47 @@ function New-LogEntry
 # Get all the files in the defined path(s)
 [array]$cleanupPath = Import-Csv '\\MyServer\CleanupConfig$\FilePaths.csv' -Delimiter ','
 
-# Store exception files
-[array]$filesException = @()
+# Initialize counter
+[int]$exceptionCount = 0
+
+# Control variable
+[bool]$isException = $false
+
+#region Mail Settings Configuration
+
+# Set mail settings
+[string]$mailSender = # Mail Sender
+[string[]]$mailRecipients = # 'somebody@somewhere.com', 'admin@somewhere.com'
+[string]$smtpRelay = #smtpRelay
+[string]$mailSubject = 'Exception in Remove-OldFiles Script'
+
+# Setup mail body
+[string]$exceptionBody = "<html lang='en'>
+
+					<head>
+    					<meta charset='UTF-8'>
+    					<meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    					<meta http-equiv='X-UA-Compatible' content='ie=edge'>
+    					<title>Exception Body</title>
+    					<style>
+        					body {
+            					font-family: Verdana, Geneva, Tahoma, sans-serif;
+            					font-size: 13px;
+            					color: black;
+        					}
+    					</style>
+					</head>
+
+					<body>
+    					<p>
+        					Dear Systems Administrators,
+    					</p>
+    					<p>
+        					<strong>Remove-OldFiles</strong> Could not process the following files/paths 
+							due an exception:
+    					</p>
+    					<ul>"
+#endregion Mail Settings Configuration
 
 New-LogEntry -LogMessage '-----------------------------------------------------------------' -LogName $LogName
 New-LogEntry -LogMessage "	Remove-OldFiles - Execution Started at $logTimeStamp" -LogName $LogName
@@ -264,10 +309,21 @@ foreach ($path in $cleanupPath)
 	# Check we have something
 	if ([string]::IsNullOrEmpty($path.'CleanupPath') -eq $true)
 	{
-		New-LogEntry -LogMessage 'Cleanup path is empty! - No action will be taken' -LogName $LogName
+		New-LogEntry -LogMessage 'Cleanup path is empty! - No action will be taken' -IsError -LogName $LogName
 		
-		# Exit immediately
-		return
+		# Add exception to mail body
+		$exceptionBody += '<li>
+						Empty <em>CleanupPath</em> directing in CSV file
+					</li>'
+		
+		# Increment Counter
+		$exceptionCount++
+		
+		# Set control variable
+		$isException = $true
+		
+		# Break loop
+		continue
 	}
 	
 	if (Get-ChildItem -Path $path.'CleanupPath' -File $ignoreFile)
@@ -319,7 +375,19 @@ foreach ($path in $cleanupPath)
 	if (!(Test-Path -Path $filePath))
 	{
 		New-LogEntry -LogMessage "Path $filePath is not valid! - Processing aborted" -IsErrorMessage -LogName $LogName
-
+		
+		# Add exception to mail body
+		$exceptionBody += "<li>
+						$filePath - Path is not valid
+					</li>"
+		
+		# Increment Counter
+		$exceptionCount++
+		
+		# Set control variable
+		$isException = $true
+		
+		# Break loop
 		continue
 	}
 
@@ -368,8 +436,16 @@ foreach ($path in $cleanupPath)
 							New-LogEntry -LogMessage "File $fileName cannot be removed - Please check permissions on file/folder" -LogName $LogName
 							New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $LogName
 							
-							# Add file/path to exception variable
-							$filesException +=$fileName
+							# Add exception to mail body
+							$exceptionBody += "<li>
+											$fileName - File could not be deleted
+										</li>"
+							
+							# Increment Counter
+							$exceptionCount++
+							
+							# Set control variable
+							$isException = $true
 						}
 					}
 				}
@@ -379,6 +455,7 @@ foreach ($path in $cleanupPath)
 				New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $LogName
 				New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $LogName
 			}
+			
 			break
 		}
 		
@@ -430,6 +507,17 @@ foreach ($path in $cleanupPath)
 							{
 								New-LogEntry -LogMessage "File $fileName cannot be removed - Please check permissions on file/folder" -LogName $LogName
 								New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $LogName
+								
+								# Add exception to mail body
+								$exceptionBody += "<li>
+											$fileName - File could not be deleted
+										</li>"
+								
+								# Increment Counter
+								$exceptionCount++
+								
+								# Set control variable
+								$isException = $true
 							}
 						}
 						else
@@ -444,6 +532,7 @@ foreach ($path in $cleanupPath)
 				New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $LogName
 				New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $LogName
 			}
+			
 			break
 		}
 
@@ -452,18 +541,51 @@ foreach ($path in $cleanupPath)
 			New-LogEntry -LogMessage "IncludeSubFolders value in CSV $recursiveSearch unknown" -IsErrorMessage -LogName $LogName
 			New-LogEntry -LogMessage 'Entry will not be processed - Review Configuration file' -IsErrorMessage -LogName $LogName
 			
-			# Unknown break loop
+			# Break loop
 			continue
 		}
 	}
 }
 
-New-LogEntry "$deletedFiles item(s) have been removed from the log directory" -LogName $LogName
+if ($isException)
+{
+	New-LogEntry -LogMessage "$deletedFiles item(s) have been removed from the log directory" -LogName $LogName
+	New-LogEntry -LogMessage "A total of $exceptionCount exceptions have been reported - Sending notification email" -IsWarningMessage -LogName $LogName
+	
+	# Close mail body
+	$exceptionBody += "</ul>
+					<p>
+						Please Review log file under $LogName for more details.
+					</p>
+					<p>
+						Kind regards,<br>
+						IT Automation Team.
+					</p>
+				</body>
+			</html>"
+	
+	# Send notification
+	$paramSendMailMessage = @{
+		From	   = $mailSender
+		To		   = $mailRecipients
+		Subject    = $mailSubject
+		Body	   = $exceptionBody
+		Priority   = 'High'
+		SmtpServer = $smtpRelay
+		Encoding   = 'utf8'
+	}
+	
+	Send-MailMessage @paramSendMailMessage
+}
+else
+{
+	New-LogEntry -LogMessage "$deletedFiles item(s) have been removed from the log directory - No Exception has been reported" -LogName $LogName
+}
 
 # Update timestamp
 [datetime]$currentDate = Get-Date
 [string]$logTimeStamp = $currentDate.ToString('hh:mm:ss')
 
-New-LogEntry -LogMessage '-----------------------------------------------------------------' -LogFilePath $LogName
-New-LogEntry -LogMessage "	Remove-OldFiles - Execution Completed at $logTimeStamp" -LogFilePath $LogName
-New-LogEntry -LogMessage '-----------------------------------------------------------------' -LogFilePath $LogName
+New-LogEntry -LogMessage '-----------------------------------------------------------------' -LogName $LogName
+New-LogEntry -LogMessage "	Remove-OldFiles - Execution Completed at $logTimeStamp" -LogName $LogName
+New-LogEntry -LogMessage '-----------------------------------------------------------------' -LogName $LogName
