@@ -454,6 +454,17 @@ foreach ($path in $cleanupPath)
 			{
 				New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $logFileName
 				New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
+				
+				# Add exception to mail body
+				$exceptionBody += "<li>
+											$filePath - Path could not be accessed
+										</li>"
+				
+				# Increment Counter
+				$exceptionCount++
+				
+				# Set control variable
+				$isException = $true
 			}
 			
 			break
@@ -531,6 +542,20 @@ foreach ($path in $cleanupPath)
 			{
 				New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $logFileName
 				New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
+				
+				New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $logFileName
+				New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
+				
+				# Add exception to mail body
+				$exceptionBody += "<li>
+											$filePath - Path could not be accessed
+										</li>"
+				
+				# Increment Counter
+				$exceptionCount++
+				
+				# Set control variable
+				$isException = $true
 			}
 			
 			break
