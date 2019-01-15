@@ -15,7 +15,7 @@ Script support both PowerShell and PowerShell core and is designed to be run as 
 | *AgeTolerance*      | Tolerance in days                   | Any number like 30 or 90                  | If empty will default to **90 days**                         |
 | *IncludeSubFolders* | Defines if recursion should be used | **0** or **1**                            | If not specified it will default to **0** (no recursion)<br /> Any other value will cause script to log an exception |
 
-**Note:** Configuration file name can be changed as long it is updated in **$cleanupPath** variable
+**Note:** Configuration file name can be changed updating **$cleanupPath** variable
 
 ## First Run and Customization
 
