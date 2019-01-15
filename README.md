@@ -23,7 +23,9 @@ In addition to updating the CSV file with path and options script needs a few cu
 
 ### Logging
 
-Script integrated a full [logging function](https://github.com/PsCustomObject/New-LogEntry) to make troubleshooting easier in case of issues, all log messages have been already configured[^1 Of course all messages can be customized and additional ones can be defined.] the only required step is setting the correct path where log will be written via the ***$logPath*** variable
+Script integrated a full [logging function](https://github.com/PsCustomObject/New-LogEntry) to make troubleshooting easier in case of issues, all log messages have been already configured the only required step is setting the correct path where log will be written via the ***$logPath*** variable
+
+**Note:** All log messages can, of course, be customized and new defined as user see fit
 
 ```powershell
 [string]$logPath = '\\MyServer\ScriptLog\Remove-OldFiles\'
