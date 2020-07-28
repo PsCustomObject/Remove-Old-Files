@@ -23,7 +23,7 @@ In addition to updating the CSV file with path and options script needs a few cu
 
 ### Logging
 
-Script integrates a full [logging function(https://github.com/PsCustomObject/New-LogEntry) to make troubleshooting easier in case of issues, all log messages have been already configured[^1 All messages can be customized and additional ones can be defined.] the only required step is setting the correct path where log will be written via the ***$logPath*** variable
+Script integrates a full [logging function](https://github.com/PsCustomObject/New-LogEntry) to make troubleshooting easier in case of issues, all log messages have been already configure <sup>1</sup> the only required step is setting the correct path where log will be written via the ***$logPath*** variable
 
 ```powershell
 [string]$logPath = '\\MyServer\ScriptLog\Remove-OldFiles\'
@@ -59,3 +59,7 @@ Folders can be ignored, useful when using recursion, creating a file named **ign
 # Define Ignore control file
 [string]$ignoreFile = 'ignore'
 ```
+
+----
+
+<sup>1</sup> All messages can be customized and additional ones can be defined as required.
