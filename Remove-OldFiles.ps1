@@ -1,242 +1,305 @@
-<#	
-	.NOTES
-	===========================================================================
-	 Created on:   	30.12.2018
-	 Revision date: 
-	 Created by:   	Daniele Catanesi
-	 Organization: 	https://PsCustomObject.github.io
-	 Filename:     	Remove-OldFiles.ps1
-	 Version:		1.0.0 - Initial Script Release
-	===========================================================================
-	
-	.SYNOPSIS
-		Scripts takes a directory as input and delete file older than defined
-		number of days
+﻿<#	
+    .NOTES
+    ===========================================================================
+     Created on:   	30.12.2018
+     Revision date: 
+     Created by:   	Daniele Catanesi
+     Organization: 	https://PsCustomObject.github.io
+     Filename:     	Remove-OldFiles.ps1
+     Version:		1.0.0 - Initial Script Release
+    ===========================================================================
+    
+    .SYNOPSIS
+    Scripts takes a directory as input and delete file older than defined
+        number of days
 
-	.DESCRIPTION
-		Script gathers all files in the specified folder, compares files'
-		creation date and if older than the value defined in the $timeSpan variable
-		will log a message and delete the file
+    .DESCRIPTION
+        Script gathers all files in the specified folder, compares files'
+        creation date and if older than the value defined in the $timeSpan variable
+        will log a message and delete the file.
 
-		Script configuration is centrally read from a customizable CSV file which 
-		must contain:
-			- Path to scan
-			- File extension to match
-			- Tolerance in days
-			- If recursion should be used
+        Script configuration is centrally read from a customizable CSV file which 
+        must contain:
+            - Path to scan
+            - File extension to match
+            - Tolerance in days
+            - If recursion should be used
 
-		Script will handle any empty/wrong value in the CSV file via default values
+        Script will handle any empty/wrong value in the CSV file via default values
 
-		Exceptions, for example wrong path or permission denied on delete, are both
-		logged and notified to defined email address(es)
+        Exceptions, for example wrong path or permission denied on delete, are both
+        logged and notified to defined email address(es)
 #>
 
 #region Support Function
 function New-LogEntry
 {
-<#
+    <#
 	.SYNOPSIS
-		Function to create a log file for PowerShell scripts
+		Function serves as logging framework for PowerShell scripts.
 	
 	.DESCRIPTION
-		Function supports both writing to a text file (default), sending messages only to console via ConsoleOnly parameter or both via WriteToConsole parameter.
+		Function allows writing log messages to a log file that can be located locally or an UNC Path additionally using buffers is supported
+		to allow loggin in situations where PsProvider does not allow access to the local system for example when working with SCCM cmdlets.
 		
-		The BufferOnly parameter will not write message neither to console or logfile but save to a temporary buffer which can then be piped to file or printed to screen.
+		By default all log messages are prepended with the [INFO] tag, see -IsError or -IsWarning parameters for more details on additional tags,
+		unless the -NoTag parameter is specified.
 	
-	.PARAMETER logMessage
-		A string containing the message PowerShell should log for example about current action being performed.
+	.PARAMETER LogMessage
+		A string representing the message to be written to the lot stream.
 	
-	.PARAMETER WriteToConsole
-		Writes the log message both to the log file and the interactive
-		console, similar to built-in Write-Host.
-	
-	.PARAMETER LogName
-		Specifies the path and log file name that will be created.
+	.PARAMETER LogFilePath
+		A string representing the path and file name to be used for writing log messages.
 		
-		Parameter only accepts full path IE C:\MyLog.log
+		If parameter is not specified $PSCommandPath will be used.
 	
-	.PARAMETER isErrorMessage
-		Prepend the log message with the [Error] tag in file and
-		uses the Write-Error built-in cmdlet to throw a non terminating
-		error in PowerShell Console
+	.PARAMETER IsErrorMessage
+		When parameter is specified log message will be prepended with the [Error] tag additionally Write-Error will be used to print
+		error on console.
 	
 	.PARAMETER IsWarningMessage
-		Prepend the log message with the [Warning] tag in file and
-		uses the Write-Warning built-in cmdlet to throw a warning in
-		PowerShell Console
+		When parameter is specified log message will be prepended with the [Warning] tag additionally Write-Warning will be used to print
+		error on console.
 	
-	.PARAMETER ConsoleOnly
-		Print the log message to console without writing it file
+	.PARAMETER BufferOnlyInfo
+		When parameter is specified log message will be saved to a temporary log-buffer with script scope for later retrieval.
+	
+	.PARAMETER NoConsole
+		When parameter is specified console output will be suppressed.
+	
+	.PARAMETER BufferOnlyWarning
+		When parameter is specified log message will be saved to a temporary log-buffer with script scope for later retrieval and
+		message will be repended with the [Warning] tag
+	
+	.PARAMETER BufferOnlyError
+		When parameter is specified log message will be saved to a temporary log-buffer with script scope for later retrieval and
+		message will be repended with the [Error] tag
 	
 	.PARAMETER BufferOnly
-		Saves log message to a variable without printing to console
-		or writing to log file
+		When parameter is specified log message will only be written to a temporary buffer that can be forwarded to file or printed on screen.
 	
-	.PARAMETER SaveToBuffer
-		Saves log message to a variable for later use
-	
-	.PARAMETER NoTimeStamp
-		Suppresses timestamp in log message
+	.PARAMETER NoTag
+		When parameter is specified tag representing message severity will be not be part of the log message.
 	
 	.EXAMPLE
-		Example 1: Write a log message to log file
-		PS C:\> New-LogEntry -LogMessage "Test Entry"
+		PS C:\> New-LogEntry -LogMessage 'This is a test message' -LogFilePath  'C:\Temp\TestLog.log'
 		
-		This will simply output the message "Test Entry" in the logfile
-		
-		Example 2: Write a log message to console only
-		PS C:\> New-LogEntry -LogMessage "Test Entry" -ConsoleOnly
-		
-		This will print Test Entry on console
-		
-		Example 3: Write an error log message
-		New-LogEntry -LogMessage "Test Log Error" -isErrorMessage
-		
-		This will prepend the [Error] tag in front of
-		log message like:
-		
-		[06-21 03:20:57] : [Error] - Test Log Error
-	
-	.NOTES
-		Additional information about the function.
+		[02.29.2020 08:27:01 AM] - [INFO]: This is a test message
 #>
-	
-	[CmdletBinding(ConfirmImpact = 'High',
-				   PositionalBinding = $true,
-				   SupportsShouldProcess = $true)]
-	param
-	(
-		[Parameter(Mandatory = $true,
-				   ValueFromPipeline = $true)]
-		[AllowNull()]
-		[Alias('Log', 'Message')]
-		[string]
-		$LogMessage,
-		[Alias('Print', 'Echo', 'Console')]
-		[switch]
-		$WriteToConsole = $false,
-		[AllowNull()]
-		[Alias('Path', 'LogFile', 'File', 'LogPath')]
-		[string]
-		$LogName,
-		[Alias('Error', 'IsError', 'WriteError')]
-		[switch]
-		$IsErrorMessage = $false,
-		[Alias('Warning', 'IsWarning', 'WriteWarning')]
-		[switch]
-		$IsWarningMessage = $false,
-		[Alias('EchoOnly')]
-		[switch]
-		$ConsoleOnly = $false,
-		[switch]
-		$BufferOnly = $false,
-		[switch]
-		$SaveToBuffer = $false,
-		[Alias('Nodate', 'NoStamp')]
-		[switch]
-		$NoTimeStamp = $false
-	)
-	
-	# Use script path if no filepath is specified
-	if (([string]::IsNullOrEmpty($LogName) -eq $true) -and
-		(!($ConsoleOnly)))
-	{
-		$LogName = $PSCommandPath + '-LogFile-' + $(Get-Date -Format 'yyyy-MM-dd') + '.log'
-	}
-	
-	# Don't do anything on empty Log Message
-	if ([string]::IsNullOrEmpty($logMessage) -eq $true)
-	{
-		return
-	}
-	
-	# Format log message
-	if (($isErrorMessage) -and
-		(!($ConsoleOnly)))
-	{
-		if ($NoTimeStamp)
-		{
-			$tmpMessage = "[Error] - $logMessage"
-		}
-		else
-		{
-			$tmpMessage = "[$(Get-Date -Format 'MM-dd hh:mm:ss')] : [Error] - $logMessage"
-		}
-	}
-	elseif (($IsWarningMessage -eq $true) -and
-		(!($ConsoleOnly)))
-	{
-		if ($NoTimeStamp)
-		{
-			$tmpMessage = "[Warning] - $logMessage"
-		}
-		else
-		{
-			$tmpMessage = "[$(Get-Date -Format 'MM-dd hh:mm:ss')] : [Warning] - $logMessage"
-		}
-	}
-	else
-	{
-		if (!($ConsoleOnly))
-		{
-			if ($NoTimeStamp)
-			{
-				$tmpMessage = $logMessage
-			}
-			else
-			{
-				$tmpMessage = "[$(Get-Date -Format 'MM-dd hh:mm:ss')] : $logMessage"
-			}
-		}
-	}
-	
-	# Write log messages to console
-	if (($ConsoleOnly) -or
-		($WriteToConsole))
-	{
-		if ($IsErrorMessage)
-		{
-			Write-Error $logMessage
-		}
-		elseif ($IsWarningMessage)
-		{
-			Write-Warning $logMessage
-		}
-		else
-		{
-			Write-Output -InputObject $logMessage
-		}
-		
-		# Write to console and exit
-		if ($ConsoleOnly -eq $true)
-		{
-			return
-		}
-	}
-	
-	# Write log messages to file
-	if (([string]::IsNullOrEmpty($LogName) -eq $false) -and
-		($BufferOnly -ne $true))
-	{
-		$paramOutFile = @{
-			InputObject = $tmpMessage
-			FilePath    = $LogName
-			Append	    = $true
-			Encoding    = 'utf8'
-		}
-		
-		Out-File @paramOutFile
-	}
-	
-	# Save message to buffer
-	if (($BufferOnly -eq $true) -or
-		($SaveToBuffer -eq $true))
-	{
-		$script:messageBuffer += $tmpMessage + '`r`n'
-		
-		# Remove blank lines
-		$script:messageBuffer = $script:messageBuffer -creplace '(?m)^\s*\r?\n', ''
-	}
+    
+    [CmdletBinding(DefaultParameterSetName = 'Info')]
+    [OutputType([string], ParameterSetName = 'Info')]
+    [OutputType([string], ParameterSetName = 'Error')]
+    [OutputType([string], ParameterSetName = 'Warning')]
+    [OutputType([string], ParameterSetName = 'NoConsole')]
+    [OutputType([string], ParameterSetName = 'BufferOnly')]
+    param
+    (
+        [Parameter(ParameterSetName = 'Error')]
+        [Parameter(ParameterSetName = 'Info')]
+        [Parameter(ParameterSetName = 'NoConsole')]
+        [Parameter(ParameterSetName = 'Warning',
+                   Mandatory = $true)]
+        [Parameter(ParameterSetName = 'BufferOnly')]
+        [ValidateNotNullOrEmpty()]
+        [Alias('Log', 'Message')]
+        [string]
+        $LogMessage,
+        [Parameter(ParameterSetName = 'Error',
+                   Mandatory = $false)]
+        [Parameter(ParameterSetName = 'Info')]
+        [Parameter(ParameterSetName = 'Warning')]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $LogFilePath,
+        [Parameter(ParameterSetName = 'Error')]
+        [Alias('IsError', 'WriteError')]
+        [switch]
+        $IsErrorMessage,
+        [Parameter(ParameterSetName = 'Warning')]
+        [Alias('Warning', 'IsWarning', 'WriteWarning')]
+        [switch]
+        $IsWarningMessage,
+        [Parameter(ParameterSetName = 'BufferOnly')]
+        [switch]
+        $BufferOnlyInfo,
+        [Parameter(ParameterSetName = 'Error')]
+        [Parameter(ParameterSetName = 'Info')]
+        [Parameter(ParameterSetName = 'Warning')]
+        [Parameter(ParameterSetName = 'NoConsole')]
+        [switch]
+        $NoConsole,
+        [Parameter(ParameterSetName = 'BufferOnly')]
+        [switch]
+        $BufferOnlyWarning,
+        [Parameter(ParameterSetName = 'BufferOnly')]
+        [switch]
+        $BufferOnlyError,
+        [Parameter(ParameterSetName = 'BufferOnly')]
+        [switch]
+        $BufferOnly,
+        [Parameter(ParameterSetName = 'Error')]
+        [Parameter(ParameterSetName = 'Info')]
+        [Parameter(ParameterSetName = 'NoConsole')]
+        [Parameter(ParameterSetName = 'Warning')]
+        [Alias('SuppressTag')]
+        [switch]
+        $NoTag
+    )
+    
+    begin
+    {
+        # Instantiate new mutex to implement lock
+        [System.Threading.Mutex]$logMutex = New-Object System.Threading.Mutex($false, 'LogSemaphore')
+        
+        # Check if file locked
+        [void]$logMutex.WaitOne()
+        
+        # Get current date timestamp
+        [string]$currentDate = [System.DateTime]::Now.ToString('[MM/dd/yyyy hh:mm:ss tt]')
+        
+        # Use script path if no filepath is specified
+        if ([string]::IsNullOrEmpty($LogFilePath) -eq $true)
+        {
+            # Generate log file path and name
+            $LogFilePath = '{0}{1}{2}{3}' -f $PSCommandPath, '-LogFile-', $currentDate, '.log'
+        }
+    }
+    
+    process
+    {
+        # Initialize commandsplat 
+        $paramOutFile = @{
+            LiteralPath = $LogFilePath
+            Append      = $true
+            Encoding    = 'utf8'
+        }
+        
+        switch ($PsCmdlet.ParameterSetName)
+        {
+            'Info'
+            {
+                switch ($PSBoundParameters.Keys)
+                {
+                    'NoTag'
+                    {
+                        # Format log message
+                        [string]$tmpLogMessage = '{0} - : {1}' -f $currentDate, $LogMessage
+                        
+                        break
+                    }
+                    default
+                    {
+                        # Format log message
+                        [string]$tmpLogMessage = '{0} - [INFO]: {1}' -f $currentDate, $LogMessage
+                    }
+                }
+                
+                # Append to log
+                $paramOutFile.Add('InputObject', $tmpLogMessage)
+                
+                # Suppress console output
+                if (!($NoConsole))
+                {
+                    Write-Output -InputObject $tmpLogMessage
+                }
+                
+                Out-File @paramOutFile
+                
+                break
+            }
+            'Warning'
+            {
+                switch ($PSBoundParameters.Keys)
+                {
+                    'NoTag'
+                    {
+                        # Format log message
+                        [string]$tmpLogMessage = '{0} - : {1}' -f $currentDate, $LogMessage
+                        
+                        break
+                    }
+                    default
+                    {
+                        # Format log message
+                        [string]$tmpLogMessage = '{0} - [WARNING]:  {1}' -f $currentDate, $LogMessage
+                    }
+                }
+                
+                # Append to log
+                $paramOutFile.Add('InputObject', $tmpLogMessage)
+                
+                # Suppress console output
+                if (!($NoConsole))
+                {
+                    Write-Warning -Message $tmpLogMessage
+                }
+                
+                Out-File @paramOutFile
+                
+                break
+            }
+            'Error'
+            {
+                
+                switch ($PSBoundParameters.Keys)
+                {
+                    'NoTag'
+                    {
+                        # Format log message
+                        [string]$tmpLogMessage = '{0} - : {1}' -f $currentDate, $LogMessage
+                        
+                        break
+                    }
+                    default
+                    {
+                        # Format log message
+                        [string]$tmpLogMessage = '{0} - [ERROR]: {1}' -f $currentDate, $LogMessage
+                    }
+                }
+                
+                # Append to log
+                $paramOutFile.Add('InputObject', $tmpLogMessage)
+                
+                # Suppress console output
+                if (!($NoConsole))
+                {
+                    Write-Error -Message $tmpLogMessage
+                }
+                
+                Out-File @paramOutFile
+                
+                break
+            }
+            
+            'BufferOnly' {
+                
+                switch ($PSBoundParameters.Keys)
+                {
+                    'BufferOnlyWarning'
+                    {
+                        # Format log message
+                        [string]$tmpLogMessage = '{0} - [WARNING]: {1}' -f $currentDate, $LogMessage
+                    }
+                    'BufferOnlyError'
+                    {
+                        # Format log message
+                        [string]$tmpLogMessage = '{0} - [ERROR]: {1}' -f $currentDate, $LogMessage
+                    }
+                    default
+                    {
+                        # Format log message
+                        [string]$tmpLogMessage = '{0} - [INFO]: {1}' -f $currentDate, $LogMessage
+                    }
+                }
+                
+                # Format message for buffer
+                [string]$script:messageBuffer += $tmpLogMessage + [Environment]::NewLine
+                
+                break
+            }
+        }
+    }
 }
 #endregion Support Function
 
@@ -306,279 +369,278 @@ New-LogEntry -LogMessage '------------------------------------------------------
 
 foreach ($path in $cleanupPath)
 {
-	# Check we have something
-	if ([string]::IsNullOrEmpty($path.'CleanupPath') -eq $true)
-	{
-		New-LogEntry -LogMessage 'Cleanup path is empty! - No action will be taken' -IsError -LogName $logFileName
-		
-		# Add exception to mail body
-		$exceptionBody += '<li>
+    # Check we have something
+    if ([string]::IsNullOrEmpty($path.'CleanupPath') -eq $true)
+    {
+        New-LogEntry -LogMessage 'Cleanup path is empty! - No action will be taken' -IsErrorMessage -LogName $logFileName
+        
+        # Add exception to mail body
+        $exceptionBody += '<li>
 						Empty <em>CleanupPath</em> directing in CSV file
 					</li>'
-		
-		# Increment Counter
-		$exceptionCount++
-		
-		# Set control variable
-		$isException = $true
-		
-		# Break loop
-		continue
-	}
-	
-	if (Get-ChildItem -Path $path.'CleanupPath' -File $ignoreFile)
-	{
-		New-LogEntry -LogMessage "Ignore file $ignoreFile found in $($path.'CleanupPath') - Skipping files in directory!" -LogName $logFileName
-		
-		# Break loop
-		continue
-	}
-	
-	New-LogEntry -LogMessage "Starting to process files in $($path.'CleanupPath')" -LogName $logFileName
-	
-	#region Csv format check
-	# Check if we have a tolerance defined or use default
-	if ([string]::IsNullOrEmpty($path.'AgeTolerance') -eq $true)
-	{
-		[int]$fileAgeTolerance = 90	
-	}
-	else
-	{
-		[int]$fileAgeTolerance = $path.'AgeTolerance'
-	}
-	
-	# Check if user specified extension filter
-	if ([string]::IsNullOrEmpty($path.'FileExtension') -eq $true)
-	{
-		[string]$fileFilter = '*.*'
-	}
-	else
-	{
-		[string]$fileFilter = '*.' + $path.'FileExtension'
-	}
-
-	# Check if user specified recursion
-	if ([string]::IsNullOrEmpty($path.'IncludeSubFolders') -eq $true)
-	{
-		[int]$recursiveSearch = 0
-	}
-	else
-	{
-		[int]$recursiveSearch = 1
-	}
-	#endregion Csv format check
-	
-	# Define path(s) to scan
-	[string]$filePath = $path.'CleanupPath'
-	
-	# Check if path is still valid
-	if (!(Test-Path -Path $filePath))
-	{
-		New-LogEntry -LogMessage "Path $filePath is not valid! - Processing aborted" -IsErrorMessage -LogName $logFileName
-		
-		# Add exception to mail body
-		$exceptionBody += "<li>
+        
+        # Increment Counter
+        $exceptionCount++
+        
+        # Set control variable
+        $isException = $true
+        
+        # Break loop
+        continue
+    }
+    
+    if (Get-ChildItem -Path $path.'CleanupPath' -File $ignoreFile)
+    {
+        New-LogEntry -LogMessage "Ignore file $ignoreFile found in $($path.'CleanupPath') - Skipping files in directory!" -LogName $logFileName
+        
+        # Break loop
+        continue
+    }
+    
+    New-LogEntry -LogMessage "Starting to process files in $($path.'CleanupPath')" -LogName $logFileName
+    
+    #region Csv format check
+    # Check if we have a tolerance defined or use default
+    if ([string]::IsNullOrEmpty($path.'AgeTolerance') -eq $true)
+    {
+        [int]$fileAgeTolerance = 90
+    }
+    else
+    {
+        [int]$fileAgeTolerance = $path.'AgeTolerance'
+    }
+    
+    # Check if user specified extension filter
+    if ([string]::IsNullOrEmpty($path.'FileExtension') -eq $true)
+    {
+        [string]$fileFilter = '*.*'
+    }
+    else
+    {
+        [string]$fileFilter = '*.' + $path.'FileExtension'
+    }
+    
+    # Check if user specified recursion
+    if ([string]::IsNullOrEmpty($path.'IncludeSubFolders') -eq $true)
+    {
+        [int]$recursiveSearch = 0
+    }
+    else
+    {
+        [int]$recursiveSearch = 1
+    }
+    #endregion Csv format check
+    
+    # Define path(s) to scan
+    [string]$filePath = $path.'CleanupPath'
+    
+    # Check if path is still valid
+    if (!(Test-Path -Path $filePath))
+    {
+        New-LogEntry -LogMessage "Path $filePath is not valid! - Processing aborted" -IsErrorMessage -LogName $logFileName
+        
+        # Add exception to mail body
+        $exceptionBody += "<li>
 						$filePath - Path is not valid
 					</li>"
-		
-		# Increment Counter
-		$exceptionCount++
-		
-		# Set control variable
-		$isException = $true
-		
-		# Break loop
-		continue
-	}
-
-	# File age tolerance
-	[datetime]$ageTimeSpan = (Get-Date).AddDays(-$fileAgeTolerance)
-	
-	New-LogEntry -LogMessage "Cleanup Script parameters:
+        
+        # Increment Counter
+        $exceptionCount++
+        
+        # Set control variable
+        $isException = $true
+        
+        # Break loop
+        continue
+    }
+    
+    # File age tolerance
+    [datetime]$ageTimeSpan = (Get-Date).AddDays(-$fileAgeTolerance)
+    
+    New-LogEntry -LogMessage "Cleanup Script parameters:
 					Recursive Search: $recursiveSearch (0 means no recursion, 1 recurse in subfolders)
 					File Age Tolerance: $fileAgeTolerance
 					File Type Filter: $fileFilter" -LogName $logFileName
-	
-	# Check if search is recursive
-	switch ($recursiveSearch)
-	{
-		0 # No recursion
-		{
-			try
-			{
-				$filesToPurge = Get-ChildItem -Path $filePath -Filter $fileFilter -File |
-				Where-Object { $_.LastWriteTime -lt $ageTimeSpan }
-				
-				if ($filesToPurge.Count -gt 0)
-				{
-					foreach ($file in $filesToPurge)
-					{
-						# Get file full path
-						[string]$fileName = $file.FullName
-						
-						New-LogEntry -LogMessage "Processing file $fileName" -LogName $logFileName
-						
-						# Calculate file age - Used for logging purposes
-						[timespan]$fileAge = ((Get-Date) - $file.LastWriteTime)
-						
-						New-LogEntry -LogMessage "File $file was last written $($fileAge.Days) days ago which is greater than $fileAgeTolerance day(s) - Deleting file" -LogName $logFileName
-						
-						try
-						{
-							# Remove file
-							Remove-Item $fileName -Confirm:$false
-							
-							# Increment counter
-							$deletedFiles++
-						}
-						catch
-						{
-							New-LogEntry -LogMessage "File $fileName cannot be removed - Please check permissions on file/folder" -LogName $logFileName
-							New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
-							
-							# Add exception to mail body
-							$exceptionBody += "<li>
+    
+    # Check if search is recursive
+    switch ($recursiveSearch)
+    {
+        0 # No recursion
+        {
+            try
+            {
+                $filesToPurge = Get-ChildItem -Path $filePath -Filter $fileFilter -File |
+                Where-Object { $_.LastWriteTime -lt $ageTimeSpan }
+                
+                if ($filesToPurge.Count -gt 0)
+                {
+                    foreach ($file in $filesToPurge)
+                    {
+                        # Get file full path
+                        [string]$fileName = $file.FullName
+                        
+                        New-LogEntry -LogMessage "Processing file $fileName" -LogName $logFileName
+                        
+                        # Calculate file age - Used for logging purposes
+                        [timespan]$fileAge = ((Get-Date) - $file.LastWriteTime)
+                        
+                        New-LogEntry -LogMessage "File $file was last written $($fileAge.Days) days ago which is greater than $fileAgeTolerance day(s) - Deleting file" -LogName $logFileName
+                        
+                        try
+                        {
+                            # Remove file
+                            Remove-Item $fileName -Confirm:$false
+                            
+                            # Increment counter
+                            $deletedFiles++
+                        }
+                        catch
+                        {
+                            New-LogEntry -LogMessage "File $fileName cannot be removed - Please check permissions on file/folder" -LogName $logFileName
+                            New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
+                            
+                            # Add exception to mail body
+                            $exceptionBody += "<li>
 											$fileName - File could not be deleted
 										</li>"
-							
-							# Increment Counter
-							$exceptionCount++
-							
-							# Set control variable
-							$isException = $true
-						}
-					}
-				}
-			}
-			catch
-			{
-				New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $logFileName
-				New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
-				
-				# Add exception to mail body
-				$exceptionBody += "<li>
+                            
+                            # Increment Counter
+                            $exceptionCount++
+                            
+                            # Set control variable
+                            $isException = $true
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $logFileName
+                New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
+                
+                # Add exception to mail body
+                $exceptionBody += "<li>
 											$filePath - Path could not be accessed
 										</li>"
-				
-				# Increment Counter
-				$exceptionCount++
-				
-				# Set control variable
-				$isException = $true
-			}
-			
-			break
-		}
-		
-		1 # Recurse in subfolders
-		{
-			try
-			{
-				$filesToPurge = Get-ChildItem -Path $filePath -Filter $fileFilter -File -Recurse |
-				Where-Object { $_.LastWriteTime -lt $ageTimeSpan }
-				
-				if ($filesToPurge.Count -gt 0)
-				{
-					# Check if any folder should be skipped
-					if ($skipControl = Get-ChildItem -Path $filePath -File $ignoreFile -Recurse)
-					{
-						[array]$skippedFolders = $skipControl.'DirectoryName'
-						
-						New-LogEntry -LogMessage "Ignore file found in $skippedFolders folder(s)" -LogName $logFileName
-						New-LogEntry -LogMessage 'All child items in folder(s) will be ignored' -LogName $logFileName
-					}
-					
-					# Cycle through the filders 
-					foreach ($file in $filesToPurge)
-					{
-						[string]$fileParentContainer = $file.'DirectoryName'
-						
-						# Get file full path
-						[string]$fileName = $file.FullName
-						
-						#if ($fileParentContainer -notlike $skippedFolders)
-						if ($skippedFolders -notcontains $fileParentContainer)
-						{
-							New-LogEntry -LogMessage "Processing file $fileName" -LogName $logFileName
-							
-							# Calculate file age - Used for logging purposes
-							[timespan]$fileAge = ((Get-Date) - $file.LastWriteTime)
-							
-							New-LogEntry -LogMessage "File $file was last written $($fileAge.Days) days ago which is greater than $fileAgeTolerance day(s) - Deleting file" -LogName $logFileName
-							
-							try
-							{
-								# Remove file
-								Remove-Item $fileName -Confirm:$false
-								
-								# Increment counter
-								$deletedFiles++
-							}
-							catch
-							{
-								New-LogEntry -LogMessage "File $fileName cannot be removed - Please check permissions on file/folder" -LogName $logFileName
-								New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
-								
-								# Add exception to mail body
-								$exceptionBody += "<li>
+                
+                # Increment Counter
+                $exceptionCount++
+                
+                # Set control variable
+                $isException = $true
+            }
+            
+            break
+        }
+        
+        1 # Recurse in subfolders
+        {
+            try
+            {
+                $filesToPurge = Get-ChildItem -Path $filePath -Filter $fileFilter -File -Recurse |
+                Where-Object { $_.LastWriteTime -lt $ageTimeSpan }
+                
+                if ($filesToPurge.Count -gt 0)
+                {
+                    # Check if any folder should be skipped
+                    if ($skipControl = Get-ChildItem -Path $filePath -File $ignoreFile -Recurse)
+                    {
+                        [array]$skippedFolders = $skipControl.'DirectoryName'
+                        
+                        New-LogEntry -LogMessage "Ignore file found in $skippedFolders folder(s)" -LogName $logFileName
+                        New-LogEntry -LogMessage 'All child items in folder(s) will be ignored' -LogName $logFileName
+                    }
+                    
+                    # Cycle through the filders 
+                    foreach ($file in $filesToPurge)
+                    {
+                        [string]$fileParentContainer = $file.'DirectoryName'
+                        
+                        # Get file full path
+                        [string]$fileName = $file.FullName
+                        
+                        #if ($fileParentContainer -notlike $skippedFolders)
+                        if ($skippedFolders -notcontains $fileParentContainer)
+                        {
+                            New-LogEntry -LogMessage "Processing file $fileName" -LogName $logFileName
+                            
+                            # Calculate file age - Used for logging purposes
+                            [timespan]$fileAge = ((Get-Date) - $file.LastWriteTime)
+                            
+                            New-LogEntry -LogMessage "File $file was last written $($fileAge.Days) days ago which is greater than $fileAgeTolerance day(s) - Deleting file" -LogName $logFileName
+                            
+                            try
+                            {
+                                # Remove file
+                                Remove-Item $fileName -Confirm:$false
+                                
+                                # Increment counter
+                                $deletedFiles++
+                            }
+                            catch
+                            {
+                                New-LogEntry -LogMessage "File $fileName cannot be removed - Please check permissions on file/folder" -LogName $logFileName
+                                New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
+                                
+                                # Add exception to mail body
+                                $exceptionBody += "<li>
 											$fileName - File could not be deleted
 										</li>"
-								
-								# Increment Counter
-								$exceptionCount++
-								
-								# Set control variable
-								$isException = $true
-							}
-						}
-						else
-						{
-							New-LogEntry -LogMessage "File $fileName will be skipped - Ignore file found in containing folder" -LogName $logFileName
-						}
-					}
-				}
-			}
-			catch
-			{
-				New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $logFileName
-				New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
-				
-				New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $logFileName
-				New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
-				
-				# Add exception to mail body
-				$exceptionBody += "<li>
+                                
+                                # Increment Counter
+                                $exceptionCount++
+                                
+                                # Set control variable
+                                $isException = $true
+                            }
+                        }
+                        else
+                        {
+                            New-LogEntry -LogMessage "File $fileName will be skipped - Ignore file found in containing folder" -LogName $logFileName
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $logFileName
+                New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
+                
+                New-LogEntry -LogMessage "Issues accessing $filePath - Please check folder permissions" -LogName $logFileName
+                New-LogEntry -LogMessage "Reported exception is $Error[0]" -LogName $logFileName
+                
+                # Add exception to mail body
+                $exceptionBody += "<li>
 											$filePath - Path could not be accessed
 										</li>"
-				
-				# Increment Counter
-				$exceptionCount++
-				
-				# Set control variable
-				$isException = $true
-			}
-			
-			break
-		}
-
-		default
-		{
-			New-LogEntry -LogMessage "IncludeSubFolders value in CSV $recursiveSearch unknown" -IsErrorMessage -LogName $logFileName
-			New-LogEntry -LogMessage 'Entry will not be processed - Review Configuration file' -IsErrorMessage -LogName $logFileName
-			
-			# Break loop
-			continue
-		}
-	}
+                
+                # Increment Counter
+                $exceptionCount++
+                
+                # Set control variable
+                $isException = $true
+            }
+            
+            break
+        }
+        
+        default
+        {
+            New-LogEntry -LogMessage "Unknown value for IncludeSubFolders paramater in CSV $recursiveSearch file" -IsErrorMessage -LogName $logFileName
+            New-LogEntry -LogMessage 'Entry will not be processed - Review Configuration file' -IsErrorMessage -LogName $logFileName
+            
+            continue
+        }
+    }
 }
 
-if ($isException)
+if ($isException -eq $true)
 {
-	New-LogEntry -LogMessage "$deletedFiles item(s) have been removed from the log directory" -LogName $logFileName
-	New-LogEntry -LogMessage "A total of $exceptionCount exceptions have been reported - Sending notification email" -IsWarningMessage -LogName $logFileName
-	
-	# Close mail body
-	$exceptionBody += "</ul>
+    New-LogEntry -LogMessage "$deletedFiles item(s) have been removed from the log directory" -LogName $logFileName
+    New-LogEntry -LogMessage "A total of $exceptionCount exceptions have been reported - Sending notification email" -IsWarningMessage -LogName $logFileName
+    
+    # Close mail body
+    $exceptionBody += "</ul>
 					<p>
 						Please Review log file $logFileName for more details.
 					</p>
@@ -588,23 +650,23 @@ if ($isException)
 					</p>
 				</body>
 			</html>"
-	
-	# Send notification
-	$paramSendMailMessage = @{
-		From	   = $mailSender
-		To		   = $mailRecipients
-		Subject    = $mailSubject
-		Body	   = $exceptionBody
-		Priority   = 'High'
-		SmtpServer = $smtpRelay
-		Encoding   = 'utf8'
-	}
-	
-	Send-MailMessage @paramSendMailMessage
+    
+    # Send notification
+    $paramSendMailMessage = @{
+        From       = $mailSender
+        To         = $mailRecipients
+        Subject    = $mailSubject
+        Body       = $exceptionBody
+        Priority   = 'High'
+        SmtpServer = $smtpRelay
+        Encoding   = 'utf8'
+    }
+    
+    Send-MailMessage @paramSendMailMessage
 }
 else
 {
-	New-LogEntry -LogMessage "$deletedFiles item(s) have been removed from the log directory - No Exception has been reported" -LogName $logFileName
+    New-LogEntry -LogMessage "$deletedFiles item(s) have been removed from the log directory - No Exception has been reported" -LogName $logFileName
 }
 
 # Update timestamp
